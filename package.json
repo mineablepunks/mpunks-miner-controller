@@ -1,0 +1,36 @@
+{
+  "name": "mpunks-miner-controller",
+  "version": "1.0.0",
+  "description": "",
+  "main": "bin/index.js",
+  "scripts": {
+    "build": "tsc",
+    "prestart": "npm run build",
+    "start": "node .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mineablepunks/mpunks-miner.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mineablepunks/mpunks-miner/issues"
+  },
+  "homepage": "https://github.com/mineablepunks/mpunks-miner#readme",
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "ethers": "^5.4.6",
+    "express": "^4.17.1",
+    "web3": "^1.5.2",
+    "web3-providers-http": "^1.5.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.13",
+    "@types/node": "^16.7.10",
+    "prettier": "^2.3.2",
+    "ts-lint": "^4.5.1",
+    "typescript": "^4.4.2"
+  }
+}
