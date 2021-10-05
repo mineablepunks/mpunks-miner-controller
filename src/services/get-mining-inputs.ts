@@ -1,11 +1,10 @@
-import { BigNumber } from "@ethersproject/bignumber";
-import { Wallet } from "@ethersproject/wallet";
 import { getMineablePunks } from "./contracts";
 import { getLast72AddressBits } from "./util";
 
 export type MiningInputs = {
   lastMinedAssets: string;
   senderAddressBits: string;
+  senderAddress: string;
   difficultyTarget: string;
 };
 
@@ -22,6 +21,7 @@ export const getMiningInputs = async ({
   return {
     lastMinedAssets,
     senderAddressBits,
+    senderAddress,
     difficultyTarget,
   };
 };
