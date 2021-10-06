@@ -2,6 +2,7 @@ import { solidityKeccak256 } from "ethers/lib/utils";
 import { Web3Provider } from "@ethersproject/providers";
 import { BigNumber } from "@ethersproject/bignumber";
 import Web3HttpProvider from "web3-providers-http";
+import { ethers } from "ethers";
 
 export function mpunksSolidityKeccak256(
   lastMinedAssets: BigNumber,
@@ -32,3 +33,14 @@ export const getProvider = (): Web3Provider => {
   const provider = new Web3Provider(httpProvider);
   return provider;
 };
+
+export const checkIfGasTooHigh = async  ({ provider, maxGasGwei }: { provider: Web3Provider, maxGasGwei: string }) => {
+  const maxGasPriceWei = ethers.utils.parseUnits(
+    maxGasGwei,
+    "gwei"
+  );
+
+  const currentGasPrice = await provider.getGasPrice()
+
+  return currentGasPrice.gt(maxGasPriceWei)
+}
