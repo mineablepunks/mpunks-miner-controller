@@ -7,7 +7,7 @@ import { exit } from "process";
 import { checkNonce } from "./services/check-nonce";
 import { getMiningInputs } from "./services/get-mining-inputs";
 import { mint } from "./services/mint";
-import { getProvider } from "./services/util";
+import { getProvider, sleep } from "./services/util";
 
 require("dotenv").config({ path: path.resolve(process.cwd(), ".env.local") });
 
@@ -174,6 +174,10 @@ app.listen(port, async () => {
     console.log(`Server started.`);
   } catch (e) {
     console.error(`Failed to start server: ${e}`);
-    exit(1);
+    console.log("Keeping the console up so that you can see the error. Close out of the application whenever...")
+    
+    while (true) {
+      await sleep(300)
+    }
   }
 });

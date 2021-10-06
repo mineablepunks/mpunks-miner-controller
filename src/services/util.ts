@@ -44,3 +44,7 @@ export const checkIfGasTooHigh = async  ({ provider, maxGasGwei }: { provider: W
 
   return currentGasPrice.gt(maxGasPriceWei)
 }
+
+export async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
