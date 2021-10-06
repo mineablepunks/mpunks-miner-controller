@@ -157,7 +157,7 @@ app.listen(port, async () => {
     for (let envVariable of LICENSE_ENV_VARIABLES) {
       if (process.env[envVariable] !== "true") {
         throw new Error(
-          `Must read the LICENSE and NOTICE files, and IF YOU ACCEPT, set ${LICENSE_ENV_VARIABLES} to "true" in .env.local`
+          `Must read the LICENSE and NOTICE files, as well as inspect the default MAX_GAS_PRICE_GWEI, and IF YOU ACCEPT, set ${LICENSE_ENV_VARIABLES} to "true" in .env.local`
         );
       }
     }
