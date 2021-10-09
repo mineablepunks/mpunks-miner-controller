@@ -1,13 +1,18 @@
 import { BigNumber } from "@ethersproject/bignumber";
 import { Wallet } from "@ethersproject/wallet";
 import { ethers } from "ethers";
-import express, { Request, response } from "express";
+import express, { Request } from "express";
 import path from "path";
-import { exit } from "process";
-import { checkNonce } from "./services/check-nonce";
+import { checkNonce, NONCE_STATUS } from "./services/check-nonce";
 import { getMiningInputs } from "./services/get-mining-inputs";
 import { mint } from "./services/mint";
-import { getProvider, sleep } from "./services/util";
+import {
+  checkIfGasTooHigh,
+  GAS_STATUS,
+  getProvider,
+  sleep,
+} from "./services/util";
+import memoize from "memoizee"
 
 require("dotenv").config({ path: path.resolve(process.cwd(), ".env.local") });
 
@@ -41,7 +46,52 @@ function err(payload: any) {
   };
 }
 
+function getSenderAddress(): string {
+  let senderAddress;
+  if (process.env.PRIVATE_KEY) {
+    const wallet = new Wallet(process.env.PRIVATE_KEY);
+    senderAddress = wallet.address;
+  } else if (
+    process.env.ONLY_NEEDED_IF_NOT_INCLUDING_PRIVATE_KEY_WALLET_ADDRESS
+  ) {
+    senderAddress =
+      process.env.ONLY_NEEDED_IF_NOT_INCLUDING_PRIVATE_KEY_WALLET_ADDRESS;
+  } else {
+    throw new Error(
+      "PRIVATE_KEY or ONLY_NEEDED_IF_NOT_INCLUDING_PRIVATE_KEY_WALLET_ADDRESS must be set to use this endpoint."
+    );
+  }
+
+  return senderAddress;
+}
+
 app.get(
+  "/check-nonce",
+  async (req: Request<any, any, any, SubmitWorkQuery>, res, next) => {
+    try {
+      if (!req.query.nonce) {
+        throw new Error("Missing nonce query parameter.");
+      }
+
+      const nonce = BigNumber.from(req.query.nonce);
+      const senderAddr = getSenderAddress();
+
+      const nonceStatus = await checkNonce({
+        nonce,
+        senderAddr,
+      });
+
+      console.log(`Nonce ${nonce._hex} has status ${nonceStatus}`);
+      res.send(success({ nonceStatus }));
+    } catch (e) {
+      res.send(err(e));
+      console.log("Error checking nonce: ", e);
+      next();
+    }
+  }
+);
+
+app.post(
   "/submit-work",
   async (req: Request<any, any, any, SubmitWorkQuery>, res, next) => {
     try {
@@ -57,18 +107,35 @@ app.get(
       const provider = getProvider();
       const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
 
-      const isFullyValid = await checkNonce({
+      const nonceStatus = await checkNonce({
         nonce,
         senderAddr: wallet.address,
       });
 
-      if (!isFullyValid) {
-        throw new Error("Nonce is not valid. Check server logs for info.");
+      if (nonceStatus == NONCE_STATUS.VALID) {
+        const provider = getProvider();
+        const gasStatus = await checkIfGasTooHigh({
+          provider,
+          maxGasGwei: process.env.MAX_GAS_PRICE_GWEI,
+        });
+
+        if (gasStatus == GAS_STATUS.GAS_TOO_HIGH) {
+          console.log(
+            `Nonce is valid, but gas price is higher than configured MAX_GAS_PRICE_GWEI of ${process.env.MAX_GAS_PRICE_GWEI}`
+          );
+          res.send(err({ nonceStatus, gasStatus }));
+        } else {
+          console.log(`Nonce ${nonce._hex} has status ${nonceStatus}`);
+          const tx = await mint({ nonce, wallet });
+          console.log(`Nonce submission transaction hash: ${tx.hash}`);
+          res.send(success({ nonceStatus, gasStatus, txHash: tx.hash }));
+        }
+      } else {
+        console.log(
+          `Nonce ${nonce._hex} has status ${nonceStatus}, and will not be submitted.`
+        );
+        res.send(err({ nonceStatus }));
       }
-
-      const tx = await mint({ nonce, wallet });
-
-      res.send(success({ txHash: tx.hash }));
     } catch (e) {
       res.send(err(e));
       console.log("Error submitting work: ", e);
@@ -77,25 +144,14 @@ app.get(
   }
 );
 
+const memoizedGetMiningInputs = memoize(getMiningInputs, { maxAge: 30000 })
+
 app.get("/mining-inputs", async (req, res, next) => {
   try {
-    let senderAddress;
-    if (process.env.PRIVATE_KEY) {
-      const wallet = new Wallet(process.env.PRIVATE_KEY);
-      senderAddress = wallet.address;
-    } else if (
-      process.env.ONLY_NEEDED_IF_NOT_INCLUDING_PRIVATE_KEY_WALLET_ADDRESS
-    ) {
-      senderAddress =
-        process.env.ONLY_NEEDED_IF_NOT_INCLUDING_PRIVATE_KEY_WALLET_ADDRESS;
-    } else {
-      throw new Error(
-        "PRIVATE_KEY or ONLY_NEEDED_IF_NOT_INCLUDING_PRIVATE_KEY_WALLET_ADDRESS must be set to use this endpoint."
-      );
-    }
-
-    const miningInputs = await getMiningInputs({ senderAddress });
+    const senderAddress = getSenderAddress();
+    const miningInputs = await memoizedGetMiningInputs({ senderAddress });
     res.send(success(miningInputs));
+    console.log("Successfully sent mining inputs")
   } catch (e) {
     res.send(err(e));
     console.log("Error getting mining inputs: ", e.message);
@@ -119,7 +175,7 @@ app.get(
       res.send(success({}));
     } catch (e) {
       res.send(err(e));
-      console.log("Error getting mining inputs: ", e.message);
+      console.log("Error processing heartbeat: ", e.message);
       next();
     }
   }
@@ -137,7 +193,11 @@ const REQUIRED_ENV_VARIABLES = [
   "READ_NOTICE",
 ];
 
-const LICENSE_ENV_VARIABLES = ["ACCEPT_LICENSE", "READ_NOTICE", "ACCEPT_MAX_GAS_PRICE_GWEI_VALUE"];
+const LICENSE_ENV_VARIABLES = [
+  "ACCEPT_LICENSE",
+  "READ_NOTICE",
+  "ACCEPT_MAX_GAS_PRICE_GWEI_VALUE",
+];
 
 app.listen(port, async () => {
   try {
@@ -174,10 +234,12 @@ app.listen(port, async () => {
     console.log(`Server started.`);
   } catch (e) {
     console.error(`Failed to start server: ${e}`);
-    console.log("Keeping the console up so that you can see the error. Close out of the application whenever...")
-    
+    console.log(
+      "Keeping the console up so that you can see the error. Close out of the application whenever..."
+    );
+
     while (true) {
-      await sleep(300)
+      await sleep(300);
     }
   }
 });

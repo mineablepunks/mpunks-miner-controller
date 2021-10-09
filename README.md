@@ -21,9 +21,17 @@ success payload:
         "difficultyTarget": "0xhexstring"
     }
 
+GET /check-nonce?nonce="0xhexstring"
+success payload:
+    {
+        "nonceStatus": "..."
+    }
+
 POST /submit-work?nonce="0xhexstring"
 success payload:
     {
+        "nonceStatus": "...",
+        "gasStatus": "...",
         "txHash": "0x....."
     }
 

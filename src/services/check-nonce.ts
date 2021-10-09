@@ -7,21 +7,27 @@ import {
 import { getLast72AddressBits, mpunksSolidityKeccak256 } from "./util";
 import { assetsToPunkId } from "../assets/assets";
 
+export enum NONCE_STATUS {
+  FAILS_DIFFICULTY_TEST = "FAILS_DIFFICULTY_TEST",
+  PRODUCES_EXISTING_MPUNK = "PRODUCES_EXISTING_MPUNK",
+  PRODUCES_EXISTING_OG_PUNK = "PRODUCES_EXISTING_OG_PUNK",
+  VALID = "VALID",
+}
+
 export const checkNonce = async ({
   nonce,
   senderAddr,
 }: {
   nonce: BigNumber;
   senderAddr: string;
-}): Promise<boolean> => {
+}): Promise<NONCE_STATUS> => {
   const mineablePunks = getMineablePunks();
   const passesDifficultyTest = await mineablePunks
     .connect(senderAddr)
     .isValidNonce(nonce);
 
   if (!passesDifficultyTest) {
-    console.error(`Nonce ${nonce._hex} does not pass difficulty test`);
-    return false;
+    return NONCE_STATUS.FAILS_DIFFICULTY_TEST;
   }
 
   const lastMinedAssets = await mineablePunks.lastMinedPunkAssets();
@@ -32,10 +38,7 @@ export const checkNonce = async ({
 
   const existingPunkId = await mineablePunks.punkAssetsToId(packedAssets);
   if (existingPunkId.gt(BigNumber.from(0))) {
-    console.error(
-      `Nonce ${nonce._hex} produces existing mpunk #${existingPunkId}`
-    );
-    return false;
+    return NONCE_STATUS.PRODUCES_EXISTING_MPUNK;
   }
 
   const publicCryptopunksData = getPublicCryptopunksData();
@@ -45,11 +48,8 @@ export const checkNonce = async ({
 
   const ogCryptopunkId = assetsToPunkId[assetNames];
   if (ogCryptopunkId) {
-    console.error(
-      `Nonce ${nonce._hex} produces OG CryptoPunk #${ogCryptopunkId}`
-    );
-    return false;
+    return NONCE_STATUS.PRODUCES_EXISTING_OG_PUNK;
   }
 
-  return true;
+  return NONCE_STATUS.VALID;
 };
