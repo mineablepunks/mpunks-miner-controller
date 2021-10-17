@@ -222,6 +222,17 @@ async function pollPooledMinerResults() {
       submittedNonces.indexOf(last.nonce) == -1) {
       console.log('found a valid nonce, will mint it if gas price is low enough');
       const nonce = BigNumber.from(last.nonce);
+      
+      const nonceStatus = await checkNonce({
+        nonce,
+        senderAddr: wallet.address,
+      });
+
+      if (nonceStatus != NONCE_STATUS.VALID) {
+        console.warn('This nonce is invalid, will not try to submit it.')
+        submittedNonces.push(last.nonce);
+        continue;
+      }
 
       const gasStatus = await checkIfGasTooHigh({
         provider,
@@ -233,7 +244,7 @@ async function pollPooledMinerResults() {
           `Gas price is higher than configured MAX_GAS_PRICE_GWEI of ${process.env.MAX_GAS_PRICE_GWEI}, waiting to submit...`
         );
       } else {
-        submittedNonces.push(last.nonce);        
+        submittedNonces.push(last.nonce);
         console.log('will send transaction to mint a new mpunk!')
         const tx = await mint({ nonce, wallet });
         console.log(`Nonce submission transaction hash: ${tx.hash}`);
@@ -242,10 +253,6 @@ async function pollPooledMinerResults() {
     }
     await sleep(5000);
   }
-}
-
-if (process.env.POLL_POOLED_MINER_RESULTS == 'true') {
-  pollPooledMinerResults();
 }
 
 app.listen(port, async () => {
@@ -261,6 +268,10 @@ app.listen(port, async () => {
           `Required environment variable ${envVariable} is missing from .env.local`
         );
       }
+    }
+
+    if (process.env.POLL_POOLED_MINER_RESULTS == 'true') {
+      pollPooledMinerResults();
     }
 
     for (let envVariable of LICENSE_ENV_VARIABLES) {
