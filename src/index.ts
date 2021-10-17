@@ -1,6 +1,7 @@
 import { BigNumber } from "@ethersproject/bignumber";
 import { Wallet } from "@ethersproject/wallet";
 import { ethers } from "ethers";
+import axios from "axios";
 import express, { Request } from "express";
 import path from "path";
 import { checkNonce, NONCE_STATUS } from "./services/check-nonce";
@@ -25,6 +26,14 @@ if (port !== DEFAULT_PORT) {
 
 type SubmitWorkQuery = {
   nonce?: string;
+};
+
+type PooledMinerResult = {
+  address: string;
+  error: string;
+  success: boolean;
+  nonce: string;
+  ts: string;
 };
 
 const STATUS = {
@@ -199,6 +208,58 @@ const LICENSE_ENV_VARIABLES = [
   "ACCEPT_MAX_GAS_PRICE_GWEI_VALUE",
 ];
 
+async function pollPooledMinerResults() {
+  const provider = getProvider();
+  const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
+  const submittedNonces = [];
+  while (true) {
+    try {
+      let result = await axios.get<PooledMinerResult>(process.env.POOLED_MINER_RESULT_URL);
+      let last = result.data;
+      console.log(`Polling pooled miner results for address ${wallet.address}, last mined address is ${last.address}...`)
+      if (last.address === wallet.address &&
+        last.error === null &&
+        last.success === true &&
+        submittedNonces.indexOf(last.nonce) == -1) {
+        console.log('Found a valid nonce, will mint it if gas price is low enough');
+        const nonce = BigNumber.from(last.nonce);
+        
+        const nonceStatus = await checkNonce({
+          nonce,
+          senderAddr: wallet.address,
+        });
+  
+        if (nonceStatus != NONCE_STATUS.VALID) {
+          console.warn('This nonce is invalid, will not try to submit it.')
+          submittedNonces.push(last.nonce);
+          continue;
+        }
+  
+        const gasStatus = await checkIfGasTooHigh({
+          provider,
+          maxGasGwei: process.env.MAX_GAS_PRICE_GWEI,
+        });
+  
+        if (gasStatus == GAS_STATUS.GAS_TOO_HIGH) {
+          console.log(
+            `Gas price is higher than configured MAX_GAS_PRICE_GWEI of ${process.env.MAX_GAS_PRICE_GWEI}, waiting to submit...`
+          );
+        } else {
+          submittedNonces.push(last.nonce);
+          console.log('Will send transaction to mint a new mpunk!');
+          const tx = await mint({ nonce, wallet });
+          console.log(`Nonce submission transaction hash: ${tx.hash}`);
+        }
+  
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      await sleep(5000);
+    }
+  }
+}
+
 app.listen(port, async () => {
   try {
     console.log("Initializing...");
@@ -212,6 +273,10 @@ app.listen(port, async () => {
           `Required environment variable ${envVariable} is missing from .env.local`
         );
       }
+    }
+
+    if (process.env.POLL_POOLED_MINER_RESULTS == 'true') {
+      pollPooledMinerResults();
     }
 
     for (let envVariable of LICENSE_ENV_VARIABLES) {

@@ -71,3 +71,19 @@ nvm use 14
 yarn install
 yarn start
 ```
+
+#### Run to watch a pooled miner result
+
+Just set `POLL_POOLED_MINER_RESULTS` with the value `true` and `POOLED_MINER_RESULT_URL` with an URL which returns a valid JSON structure: 
+
+```
+{
+  "address": "0x0000",
+  "error": null,
+  "success": true,
+  "nonce": "0x0000",
+  "ts": "Thu Oct 14 2021 11:58:36 PM"
+}
+```
+
+If this URL returns a valid nonce with the same address than the one you provided a private key for, and if the gas is low enough, a mint transaction will be executed to mint an mpunk with the found nonce.
